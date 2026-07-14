@@ -1,51 +1,59 @@
 const express = require('express');
-const puppeteer = require('puppeteer');
+const tmdbScrape = require('vidsrc.ts');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Endpoint pentru extragere
 app.get('/extract', async (req, res) => {
-    const imdbId = req.query.imdb;
-    if (!imdbId) {
-        return res.status(400).json({ error: 'Missing imdb parameter' });
+    // Suportă atât imdb cât și tmdbId
+    let imdbId = req.query.imdb;
+    let tmdbId = req.query.tmdbId;
+
+    // Dacă avem imdb, trebuie să îl convertim în tmdbId
+    if (imdbId && !tmdbId) {
+        try {
+            // Convertim IMDb în TMDB folosind API-ul TMDB
+            const apiKey = 'YOUR_TMDB_API_KEY'; // Înlocuiește cu cheia ta
+            const response = await fetch(`https://api.themoviedb.org/3/find/${imdbId}?api_key=${apiKey}&external_source=imdb_id`);
+            const data = await response.json();
+            if (data.movie_results && data.movie_results.length > 0) {
+                tmdbId = data.movie_results[0].id;
+            } else {
+                return res.status(404).json({ success: false, error: 'Movie not found on TMDB' });
+            }
+        } catch (error) {
+            return res.status(500).json({ success: false, error: 'Failed to convert IMDb to TMDB' });
+        }
     }
 
-    const url = `https://vidsrc.pm/embed/movie/${imdbId}`;
-    console.log(`[${new Date().toISOString()}] Extracting M3U8 for: ${url}`);
+    if (!tmdbId) {
+        return res.status(400).json({ error: 'Missing tmdbId or imdb parameter' });
+    }
 
-    let browser;
+    console.log(`[${new Date().toISOString()}] Extracting for TMDB ID: ${tmdbId}`);
+
     try {
-        browser = await puppeteer.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
-
-        const page = await browser.newPage();
-        let m3u8Url = null;
-
-        page.on('response', async (response) => {
-            const responseUrl = response.url();
-            if (responseUrl.includes('.m3u8')) {
-                console.log(`[${new Date().toISOString()}] Found M3U8: ${responseUrl}`);
-                m3u8Url = responseUrl;
-            }
-        });
-
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        await browser.close();
-
-        if (m3u8Url) {
-            res.json({ success: true, m3u8: m3u8Url });
+        // Folosește vidsrc.ts pentru a extrage stream-ul
+        const result = await tmdbScrape(tmdbId, 'movie');
+        
+        if (result && result.hlsUrl) {
+            res.json({ success: true, m3u8: result.hlsUrl });
         } else {
             res.status(404).json({ success: false, error: 'M3U8 not found' });
         }
-
     } catch (error) {
         console.error(`[${new Date().toISOString()}] Error:`, error.message);
-        if (browser) await browser.close();
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+// Endpoint pentru testare
+app.get('/', (req, res) => {
+    res.json({ 
+        message: 'M3U8 Proxy is running on Vercel!',
+        usage: '/extract?tmdbId=550 (Fight Club) or /extract?imdb=tt0110357 (The Lion King)'
+    });
 });
 
 app.listen(port, () => {
