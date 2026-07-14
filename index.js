@@ -1,9 +1,12 @@
 const express = require('express');
 const puppeteer = require('puppeteer-core');
-const chromium = require('@sparticuz/chromium');
+const chromium = require('@sparticuz/chromium-min');
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// URL-ul către arhiva Chromium (poți folosi și o variabilă de mediu)
+const CHROMIUM_REMOTE_PATH = 'https://github.com/Sparticuz/chromium/releases/download/v123.0.0/chromium-v123.0.0-pack.tar';
 
 app.get('/extract', async (req, res) => {
     const imdbId = req.query.imdb;
@@ -16,11 +19,13 @@ app.get('/extract', async (req, res) => {
 
     let browser;
     try {
-        // Lansează browser-ul folosind configurația optimizată pentru serverless
+        // Folosește executablePath-ul de la distanță
+        const executablePath = await chromium.executablePath(CHROMIUM_REMOTE_PATH);
+
         browser = await puppeteer.launch({
             args: chromium.args,
             defaultViewport: chromium.defaultViewport,
-            executablePath: await chromium.executablePath(),
+            executablePath: executablePath,
             headless: chromium.headless,
             ignoreHTTPSErrors: true,
         });
