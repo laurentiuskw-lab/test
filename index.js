@@ -4,28 +4,48 @@ const { scrapeVidsrc } = require('@definisi/vidsrc-scraper');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Endpoint pentru scraping
+// Funcție pentru conversie IMDb → TMDB (folosind API-ul public TMDB)
+async function convertImdbToTmdb(imdbId) {
+    const apiKey = 'YOUR_TMDB_API_KEY'; // Înlocuiește cu cheia ta TMDB
+    const url = `https://api.themoviedb.org/3/find/${imdbId}?api_key=${apiKey}&external_source=imdb_id`;
+    const response = await fetch(url);
+    const data = await response.json();
+    return data.movie_results?.[0]?.id || null;
+}
+
 app.get('/extract', async (req, res) => {
-    // Acceptă atât parametrul 'imdb', cât și 'tmdbId'
-    const imdbId = req.query.imdb;
-    const tmdbId = req.query.tmdbId;
+    let imdbId = req.query.imdb;
+    let tmdbId = req.query.tmdbId;
 
-    // Dacă ai IMDb ID, trebuie convertit în TMDB ID
-    // Pentru simplitate, exemplul folosește tmdbId direct
-    const id = tmdbId || imdbId;
+    // Dacă avem IMDb ID, îl convertim
+    if (imdbId && !tmdbId) {
+        try {
+            tmdbId = await convertImdbToTmdb(imdbId);
+            if (!tmdbId) {
+                return res.status(404).json({ 
+                    success: false, 
+                    error: 'Could not convert IMDb to TMDB ID' 
+                });
+            }
+        } catch (error) {
+            return res.status(500).json({ 
+                success: false, 
+                error: 'Failed to convert IMDb to TMDB: ' + error.message 
+            });
+        }
+    }
 
-    if (!id) {
+    if (!tmdbId) {
         return res.status(400).json({ 
             success: false, 
             error: 'Missing tmdbId or imdb parameter' 
         });
     }
 
-    console.log(`[${new Date().toISOString()}] Extracting for: ${id}`);
+    console.log(`[${new Date().toISOString()}] Extracting for TMDB ID: ${tmdbId}`);
 
     try {
-        // Apelează scraper-ul (fără browser!)
-        const result = await scrapeVidsrc(id, 'movie');
+        const result = await scrapeVidsrc(tmdbId, 'movie');
 
         if (result.success && result.hlsUrl) {
             res.json({ 
@@ -49,10 +69,9 @@ app.get('/extract', async (req, res) => {
     }
 });
 
-// Endpoint pentru rădăcină
 app.get('/', (req, res) => {
     res.json({ 
-        message: 'M3U8 Proxy is running. Use /extract?tmdbId=27205' 
+        message: 'M3U8 Proxy is running. Use /extract?imdb=tt0110357 or /extract?tmdbId=10395' 
     });
 });
 
